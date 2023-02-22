@@ -1,0 +1,585 @@
+options{
+STATIC=false;
+IGNORE_CASE=true;
+//UNICODE_INPUT = false;
+
+//	ERROR_REPORTING = true;
+	JAVA_UNICODE_ESCAPE = true;
+
+	DEBUG_PARSER = false;
+	DEBUG_LOOKAHEAD = false;
+    DEBUG_TOKEN_MANAGER = false;
+  }
+
+
+PARSER_BEGIN(RequestParser)
+package cn.sowjz.souwen.v1.req_parser;
+
+import java.io.StringReader;
+import java.util.*;
+import cn.sowjz.souwen.v1.query.request.SubCrit;
+
+public class RequestParser {
+
+
+    static public enum SumType { none,count,estimate }
+     static public enum SortType { time,rela,random,COPIES,time_asc,field_desc,field_asc,heat }
+     static public enum CmdType { SEARCH,GROUP,DISTINCT,CUBE,KEYWORDS,WORDCLOUD,WAM,CLUSTER,UNITED }
+     static public enum OpType { INDEX,GREATTHAN,LESSTHAN,EQUAL,UNEQUAL,GREATEQUAL,LESSEQUAL,BETWEEN,IN,COMPARE,NOTIN,SEARCH,BITAND,MASK_EQUAL }
+     static public enum SubRunType { AND,ANDNOT,OR,ORNOT }
+      
+
+	public static void main(String [] args) throws Exception {
+		String sql="SEARCH [0,1000] orderby=time sum= count WHERE TI : '((消防|消防车|消防员|消防队|消防队员|119|火灾|火势|起火|着火|失火爆燃|燃爆|闪爆)+(南京|玄武|秦淮|建邺))' AND PU between 1644163200,1644249600 AND RE == 0";
+		RequestParser t=new RequestParser(new StringReader(sql));
+		
+		t.fillTo(new RequestBuilder.Simple());
+	}
+
+
+	private String removeQuote(String tx) {
+			if(tx==null) return tx;
+			int len=tx.length();
+			
+			if(tx.length()>=2&& tx.charAt(0)=='\''&& tx.charAt(len-1)=='\'')
+			{
+			    StringBuffer strb=new StringBuffer();
+			    char last=0;
+				for(int i=1;i<len-1;i++) {
+					char c=tx.charAt(i);
+					if(last!='\'' || c!='\'')
+					   strb.append(c);
+				    last=c;	   
+				}
+			  	return strb.toString();
+			}
+			return tx;	
+    }
+
+}
+
+
+
+PARSER_END(RequestParser)
+
+
+SKIP:{" "}
+TOKEN : 
+{
+  <AND:           ("AND" ) >
+| <OR:            ("OR" ) >
+| <NOT:           ("NOT") >
+| <ORNOT:            ("ORNOT" ) >
+| <ANDNOT:           ("ANDNOT") >
+|   <ORDERBY: "orderby">
+|   <SEARCH: "SEARCH">
+|   <DISTINCT: "DISTINCT">
+|   <GROUP: "GROUP">
+|   <CUBE: "CUBE">
+|   <KEYWORDS: "KEYWORDS">
+|   <WORDCLOUD: "WORDCLOUD">
+|   <WAM: "WAM">
+|   <CLUSTER: "CLUSTER">
+|   <UNITED: "UNITED">
+|   <ALL: "ALL">
+|   <TIME: "time">
+|   <rela: "rela">
+|   <random: "random">
+|   <COPIES: "COPIES">
+|   <time_asc: "time_asc">
+|   <field_desc: "field_desc">
+|   <field_asc: "field_asc">
+|   <heat: "heat" |"formula">
+|   <SUM: "sum">
+|   <none: "none">
+|   <COUNT: "count">
+|   <estimate: "estimate">
+|   <WHERE: "where">
+|   <params: "params">
+|   <asknum: "asknum">
+|   <between: "between">
+|   <host_sn: "host_sn">
+| <QUOTED:       ("'" (("''") | ~["'"] )+ "'")>
+}
+
+
+
+TOKEN : { < #CAPITAL: (["A"-"Z"]) > }
+TOKEN : { < #LETTER: (["a"-"z","A"-"Z"] | ["\u0153"-"\ufffd"]) > }
+TOKEN : { < #DIGIT: ["0"-"9"] > }
+TOKEN : { < #DIGITS: (["0"-"9"])+ > }
+TOKEN: {< NUMBER: ("-")?(< DIGIT >)+ >  }
+TOKEN: {< FLOAT:("-")?(< DIGIT >)+"."(< DIGIT >)+ | ("-")?"."(< DIGIT >)+>  }
+TOKEN:{<FIELD:< CAPITAL >< CAPITAL >>}
+TOKEN:{<HEX: "0" ["x","X"] (["0"-"9","a"-"f","A"-"F"])+> }
+
+
+TOKEN :
+{
+	<COMMA: ",">
+|	<PERIOD: ".">
+|	<LPAREN: "(">
+|	<RPAREN: ")">
+|   <LBRACE: "{">
+|   <RBRACE: "}">
+|   <LSBRACE: "[">
+|   <RSBRACE: "]">
+|	<EQ: "=">
+|	<EQ2: "==">
+|	<NE: "<>">
+|	<NE2: "!=">
+|	<LT: "<">
+|	<LE: "<=">
+|	<GT: ">">
+|	<GE: ">=">
+|	<STAR: "*">
+|	<SLASH: "/">
+|	<PLUS: "+">
+|	<MINUS: "-">
+|   <COLON: ":">
+|	<CONCAT_OP: "|">
+|	<SEARCH_TEXT: "M"< DIGITS>"%:">
+|   <AMP_OP: "&">
+|	<SIMHASH_EQ: "D"< DIGITS>"=">
+|	<NOTIN: "notin">
+|	<FROM: "from">
+}
+
+TOKEN:{<TABLE_NAME: (["0"-"9","a"-"z","A"-"Z","_"])+> }
+
+void fillTo(RequestBuilder tb):
+{
+	 Token t0;
+ SubCrit subt;
+}
+{
+	(      queryCluse(tb)
+    |  <UNITED >
+    { tb.queryCmd(CmdType.UNITED);}
+	  <LPAREN>
+	    queryCluse(tb)
+	    (	      <COMMA>
+	      queryCluse(tb)
+	    )*  
+	<RPAREN>
+( < FROM> t0=< TABLE_NAME>
+   {tb.table_name(t0.image);}
+)?
+	
+    )
+   <WHERE>
+   {tb.createRequest();}
+   subt=whereClause(tb)
+	 < EOF>
+    {tb.where(subt);}  
+}
+
+void fillOnlyWhereTo(RequestBuilder tb):
+{
+  SubCrit subt;
+  tb.createRequest(); 
+}
+{
+	
+  subt= whereClause(tb)
+	 < EOF>
+  {tb.where(subt);}  
+}
+
+void queryCluse(RequestBuilder tb):
+{
+  Token t0;
+   
+}  
+{
+ (    
+  (     <SEARCH>
+     {tb.queryCmd(CmdType.SEARCH);}
+     ask_order_sum(tb)
+	
+  )   | ( <DISTINCT>
+         {tb.queryCmd(CmdType.DISTINCT);}
+	 ask_order_sum(tb)
+	 params(tb)
+   )	 | (<GROUP>
+    {tb.queryCmd(CmdType.GROUP);}
+	  	     <asknum >
+	      <EQ >
+	      (	        t0=<NUMBER >
+	       {tb.askNum(t0.image);}
+	     | <ALL>
+	     {  {tb.askNum("0");}}
+	    ) 
+	   
+	 params(tb)
+   )|(
+     <CUBE>
+      {tb.queryCmd(CmdType.CUBE);}
+       <asknum >
+	      <EQ >
+	      (
+	        t0=<NUMBER >
+	       {tb.askNum(t0.image);}
+	     | <ALL>
+	     {  {tb.askNum("0");}}
+	    ) <CONCAT_OP >
+	     (
+	        t0=<NUMBER >
+	       {tb.cube2f_max(t0.image);}
+	     | <ALL>
+	     {  {tb.cube2f_max("0");}}
+	    )
+
+	     params_cube(tb)
+     )	| ( <KEYWORDS>
+         {tb.queryCmd(CmdType.KEYWORDS);}
+	 ask_order_sum(tb)
+	 params(tb)
+   )
+   | (   (<WORDCLOUD>
+         {tb.queryCmd(CmdType.WORDCLOUD);}
+       | <WAM>
+       {tb.queryCmd(CmdType.WAM);}
+       | <CLUSTER>
+       {tb.queryCmd(CmdType.CLUSTER);}
+	 )
+	 ask_order_sum(tb)
+	 params_mining(tb)
+   )	
+)
+
+( < FROM> t0=< TABLE_NAME>
+   {tb.table_name(t0.image);})?
+
+}
+
+void params_mining( RequestBuilder tb):
+{
+    Token t0;
+    List< String> list=new ArrayList< String>();
+}
+{
+   <params ><EQ >
+    <LSBRACE>
+    
+     (
+       t0=field_name()
+       { tb.target(t0.image);}
+   )
+	
+   (  < COMMA>
+      (         t0=<NUMBER >
+       { list.add(t0.image);}
+     |  t0=< FLOAT>
+       { list.add(t0.image);}
+    ) 
+   )*
+  
+     <RSBRACE>
+    { tb.miningParams(list);} 
+}
+Token number( ):
+{
+   Token t0;
+}
+{
+   (
+     t0=< NUMBER>
+        
+    
+     )
+     {return t0;}
+}
+
+void params_cube( RequestBuilder tb):
+{
+    Token t0;
+    List< String> sumlist=new ArrayList< String>();
+}
+{
+   <params ><EQ >
+    <LSBRACE>
+    
+     (
+       t0=field_name()
+       { tb.target(t0.image);}
+   )
+	(
+	  <LPAREN>
+      t0=<NUMBER >
+	       {tb.groupBegin(t0.image);}
+	< COMMA>
+	       t0=<NUMBER >
+	       {tb.groupStep(t0.image);}
+	<RPAREN>
+   )?
+   (  < COMMA>
+       t0=field_name()
+       { tb.cube2fn(t0.image);}
+   )
+   (
+     < COMMA>
+     < SUM>
+      <LPAREN>
+     t0= field_name()
+     {sumlist.add(t0.image.toUpperCase()); }
+      (
+        < COMMA>
+         t0=field_name()
+          {sumlist.add(t0.image.toUpperCase()); }
+      )*
+      <RPAREN>
+      { tb.fieldSum(sumlist); }
+   )?
+     <RSBRACE>
+}
+void params( RequestBuilder tb):
+{
+    Token t0;
+    List< String> sumlist=new ArrayList< String>();
+}
+{
+   <params ><EQ >
+    <LSBRACE>
+    
+     (
+       t0=field_name()
+       { tb.target(t0.image);}   )
+	(	  <LPAREN>
+      t0=<NUMBER >
+	       {tb.groupBegin(t0.image);}
+	< COMMA>
+	       t0=<NUMBER >
+	       {tb.groupStep(t0.image);}
+	<RPAREN>
+   )?
+   (
+     < COMMA>
+     < SUM>
+      <LPAREN>
+     t0= field_name()
+     {sumlist.add(t0.image); }
+      (
+        < COMMA>
+         t0=field_name()
+          {sumlist.add(t0.image); }      )*
+      <RPAREN>
+      { tb.fieldSum(sumlist); }   )?
+     <RSBRACE>
+}
+Token field_name( ):
+{
+   Token t0;
+}
+{
+   (     t0=< FIELD>
+        
+       | t0=< OR>
+     )
+     {return t0;}
+}  
+void ask_order_sum( RequestBuilder tb):
+{
+    Token t0;
+     Token t1;
+}
+{
+  <LSBRACE>
+	t0=<NUMBER>
+    {tb.askBegin(t0.image);}
+	<COMMA>
+	t0=<NUMBER>
+	 {tb.askNum(t0.image);}
+	 <RSBRACE>
+(  
+(  	 
+	 <ORDERBY ><EQ >
+(    <TIME >
+    {tb.orderBy(SortType.time);}
+|   <rela>
+{tb.orderBy(SortType.rela);}
+|   <random>
+{tb.orderBy(SortType.random);}
+|   <COPIES>
+{tb.orderBy(SortType.COPIES);}
+|   <time_asc>
+{tb.orderBy(SortType.time_asc);}
+|   <field_desc><LPAREN >t0=<QUOTED ><RPAREN >
+{tb.orderBy(SortType.field_desc,removeQuote(t0.image));}
+|   <field_asc><LPAREN >t0=<QUOTED ><RPAREN >
+{tb.orderBy(SortType.field_asc,removeQuote(t0.image));}
+|   <heat><LPAREN >t0=<QUOTED ><RPAREN >
+{tb.orderBy(SortType.heat,removeQuote(t0.image));}
+)
+)|( 
+    
+ <SUM><EQ >
+  (
+   t0=<none>
+   {tb.sum(SumType.none);}
+|  t0= <COUNT>
+{tb.sum(SumType.count);}
+|   t0=<estimate>
+{tb.sum(SumType.estimate);}
+  )
+
+)
+
+)*
+}
+
+
+SubCrit whereClause(RequestBuilder tb):
+{
+    SubCrit subt1;
+    SubCrit subt2;
+}
+{
+    subt1=expression(tb)
+    (
+   LOOKAHEAD(2)
+       <OR >
+      
+      subt2= expression(tb)
+        { subt1=subt1.or(subt2);}
+     | 
+     <OR ><NOT >
+    
+       subt2=expression(tb)
+        { subt1=subt1.orNot(subt2);}
+    )*
+     { return subt1;}
+}
+
+
+
+
+SubCrit expression(RequestBuilder tb):
+{
+    SubCrit subt1;
+    SubCrit subt2;
+}
+{
+     subt1=primary(tb)
+     (
+  LOOKAHEAD(2)
+       <AND ><NOT> 
+      
+       subt2= primary(tb)
+         { subt1=subt1.andNot(subt2);}
+     | 
+     <AND>  
+    
+    subt2= primary(tb)
+     { subt1=subt1.mergeAnd(subt2);}
+     )*
+
+     { return subt1;}
+}
+
+
+SubCrit primary(RequestBuilder tb):
+{
+  Token t;
+  SubCrit subt;
+}
+{
+  subt=one_field(tb)
+{return subt;}
+  | <LPAREN >subt=whereClause(tb) <RPAREN >
+{return subt; } 
+}
+
+SubCrit one_field(RequestBuilder tb):
+{
+  Token t=null;
+  Token t2=null;
+   Token t3=null;
+  OpType op=null;
+  List< String> list=new ArrayList< String>();
+  String value;
+  String field_name;
+}
+{
+    (       t=< FIELD> { field_name=t.image;}
+
+       | t=< OR> { field_name=t.image;}
+       | t=< host_sn> { field_name="00";}
+     )
+   (
+     (
+      (
+       <EQ> { op=OpType.EQUAL;}
+       |<EQ2> { op=OpType.EQUAL;}
+       |<NE> { op=OpType.UNEQUAL;}
+       |<NE2> { op=OpType.UNEQUAL;}
+       |<LT> { op=OpType.LESSTHAN;}
+       |<LE> { op=OpType.LESSEQUAL;}
+       |<GT> { op=OpType.GREATTHAN;}
+       |<GE> { op=OpType.GREATEQUAL;}
+       )
+       (          t3=<NUMBER >
+          {value=t3.image;}
+          |t3=< QUOTED>
+           {value=removeQuote(t3.image);}
+        )
+      (
+        	<SLASH> t3=<NUMBER>
+        { tb.simhash_threshold(t3.image);}      )?
+      {return tb.oneFieldCrit(field_name,op,value);}
+  )|(
+      <between >
+          ( 
+ 			t2=<NUMBER >
+ 			<COMMA >
+ 			t3=<NUMBER >
+  			{return tb.oneFieldCrit(field_name,OpType.BETWEEN, t2.image,t3.image);}
+  		 )
+
+  )|( (t2=< FIELD>|t2=< NOTIN>)
+
+     <LSBRACE>
+     (        t3=<QUOTED >
+        { list.add(removeQuote(t3.image));}
+        | t3=< NUMBER>
+          { list.add(t3.image);}
+    )
+   
+    (
+      <COMMA>
+      (
+        t3=<QUOTED >
+        { list.add(removeQuote(t3.image));}
+        | t3=< NUMBER>
+          { list.add(t3.image);}
+      )
+           )* 
+ <RSBRACE>
+  (
+        	<SLASH> t3=<NUMBER>
+        { tb.simhash_threshold(t3.image);}
+      )?
+    
+   {return tb.oneFieldCrit(field_name,t2.image,list);}
+  )|(
+
+     t2=< COLON>
+    t3=<QUOTED >
+ 
+   {return tb.oneFieldCrit(field_name,OpType.INDEX,removeQuote(t3.image));}
+    )
+|(
+
+     t2=< SEARCH_TEXT>
+    t3=<QUOTED >
+ 
+   {return tb.oneFieldCrit(field_name,OpType.SEARCH,t2.image,removeQuote(t3.image));}
+    )|(
+     <AMP_OP> (t2=< NUMBER>|t2=< HEX>)(< EQ>{ op=OpType.MASK_EQUAL;}|< NE2> { op= OpType.BITAND ;})(t3=< NUMBER>|t3=< HEX>)
+    {return tb.oneFieldCrit(field_name,op,t2.image,t3.image);}
+  )
+
+)
+
+}
+
