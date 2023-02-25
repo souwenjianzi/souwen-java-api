@@ -6,6 +6,37 @@
   <name>souwen java api</name>
   <description>souwen java api</description>
   
+  
+  <licenses>
+    <license>
+      <name>The GNU Lesser General Public License, Version 3.0</name>
+      <url>http://www.gnu.org/licenses/lgpl-3.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+   <scm>  
+   		<url>http://www.souwenjianzi.com/</url>   
+      	<connection>scm:git:https://github.com/souwenjianzi/souwen-java-api.git</connection> 
+   </scm>
+	<developers>        
+   		<developer>        
+    		<name>souwenjianzi</name>          
+        	<email>souwen@hither.com.cn</email>   
+        	<organization>sou wen jian zi</organization> 
+    	</developer>   
+	</developers>     
+                                           
+  	<distributionManagement>        
+		<snapshotRepository>            
+			<id>ossrh</id>            
+			<url>https://s01.oss.sonatype.org/content/repositories/snapshots</url>        
+		</snapshotRepository>        
+		<repository>            
+			<id>ossrh</id>                        
+			<url>https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/</url>        
+		</repository>    
+   	</distributionManagement>
+
    <properties>
 		<java.version>1.8</java.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
